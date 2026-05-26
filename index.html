@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro-Board Professional | Mobile & Desktop with Cloud Sync</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-canvas: #1e1e24;
+            --accent-blue: #3b82f6;
+            --glass-bg: rgba(23, 23, 28, 0.95);
+            --border-white: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121214; 
+            color: #e2e8f0;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-white);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+        }
+
+        .sidebar {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: clamp(80px, 15vw, 110px);
+            border-radius: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            padding: 10px;
+            z-index: 100;
+        }
+
+        @media (max-width: 640px) {
+            .sidebar { grid-template-columns: 1fr; width: 55px; left: 5px; gap: 5px; padding: 5px; }
+            .tool-btn { width: 42px !important; height: 42px !important; }
+        }
+
+        .tool-btn {
+            width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 12px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: #94a3b8;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid transparent;
+            touch-action: manipulation;
+        }
+
+        .tool-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; transform: scale(1.05); }
+        .tool-btn.active { 
+            background: var(--accent-blue); color: #fff; 
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+            border-color: rgba(255,255,255,0.3);
+        }
+
+        .settings-panel {
+            position: absolute;
+            left: clamp(65px, 18vw, 140px);
+            top: 50%;
+            transform: translateY(-50%);
+            width: clamp(220px, 65vw, 290px);
+            border-radius: 24px;
+            padding: 20px;
+            z-index: 90;
+            display: none;
+            animation: panelFade 0.2s ease-out;
+        }
+
+        @keyframes panelFade {
+            from { opacity: 0; transform: translateY(-50%) translateX(-20px); }
+            to { opacity: 1; transform: translateY(-50%) translateX(0); }
+        }
+
+        .active-mode { background: var(--accent-blue) !important; color: white !important; }
+
+        #mainCanvas { display: block; touch-action: none; cursor: crosshair; }
+        
+        .bg-dots { background-image: radial-gradient(rgba(255,255,255,0.1) 1px, transparent 1px); background-size: 30px 30px; }
+        .bg-squares { background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 40px 40px; }
+        
+        #minimap-container {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 140px; height: 90px;
+            border-radius: 16px; overflow: hidden;
+            z-index: 100; border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        @media (max-width: 640px) {
+            #minimap-container { display: none; }
+            .zoom-indicator { left: 70px !important; bottom: 15px !important; }
+        }
+
+        .zoom-indicator {
+            position: absolute; bottom: 30px; left: 150px;
+            padding: 6px 12px; border-radius: 20px;
+            font-size: 11px; font-weight: 600; z-index: 100;
+        }
+
+        .stepper-btn {
+            width: 44px; height: 44px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: 0.2s; touch-action: manipulation;
+        }
+
+        .color-dot { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+        .color-dot.active { border-color: #fff; transform: scale(1.1); }
+
+        /* Custom Modal System styling */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(9, 9, 11, 0.85); backdrop-filter: blur(8px);
+            z-index: 200; display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-card {
+            width: 90%; max-width: 420px; border-radius: 28px;
+            transform: scale(0.9); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .modal-overlay.active .modal-card { transform: scale(1); }
+    </style>
+</head>
+<body>
+
+    <!-- Cloud Status Header -->
+    <div class="absolute top-4 right-4 flex items-center gap-3 z-[110]">
+        <div id="cloud-status-badge" class="glass-panel text-[11px] px-3.5 py-2 rounded-full flex items-center gap-2 font-medium border border-white/10 hidden">
+            <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse" id="status-dot"></span>
+            <span id="status-text" class="text-zinc-300">Unsaved Session</span>
+        </div>
+        <button id="auth-btn" class="glass-panel px-4 py-2 rounded-full flex items-center gap-2.5 text-white border border-white/10 hover:border-blue-500/50 hover:bg-white/5 transition duration-200">
+            <i class="fa-solid fa-cloud-arrow-up text-blue-400" id="auth-icon"></i>
+            <span id="auth-username" class="text-xs font-semibold">Sign In / Sync</span>
+        </button>
+    </div>
+
+    <nav class="sidebar glass-panel">
+        <button class="tool-btn active" id="pencil-tool" title="Pencil">
+            <i class="fa-solid fa-pencil"></i>
+        </button>
+        <button class="tool-btn" id="magic-tool" title="Smart Math Corrector">
+            <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+        </button>
+        <button class="tool-btn" id="eraser-tool" title="Eraser">
+            <i class="fa-solid fa-eraser"></i>
+        </button>
+        <button class="tool-btn" id="hand-tool" title="Hand / Navigation">
+            <i class="fa-solid fa-hand"></i>
+        </button>
+        <button class="tool-btn" id="bg-tool" title="Background Options">
+            <i class="fa-solid fa-palette"></i>
+        </button>
+        <button class="tool-btn" id="upload-tool" onclick="document.getElementById('file-input').click()" title="Import Image">
+            <i class="fa-solid fa-file-arrow-up"></i>
+        </button>
+        <button class="tool-btn" id="page-tool" title="Pages">
+            <i class="fa-solid fa-layer-group"></i>
+        </button>
+        <button class="tool-btn" id="fit-tool" title="Fit View"><i class="fa-solid fa-compress"></i></button>
+        <button class="tool-btn" id="zoom-in-tool" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+        <button class="tool-btn" id="zoom-out-tool" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+        <button class="tool-btn" id="undo-btn" title="Undo"><i class="fa-solid fa-arrow-rotate-left"></i></button>
+        <button class="tool-btn" id="redo-btn" title="Redo"><i class="fa-solid fa-arrow-rotate-right"></i></button>
+        <button class="tool-btn text-emerald-400 hover:text-emerald-300" id="save-page-btn" title="Save PNG">
+            <i class="fa-solid fa-floppy-disk"></i>
+        </button>
+        <button class="tool-btn text-red-400 hover:text-red-300" id="clear-page-btn" title="Clear page"><i class="fa-solid fa-trash-can"></i></button>
+        
+        <input type="file" id="file-input" accept="image/*" class="hidden">
+    </nav>
+
+    <!-- Pencil settings panel -->
+    <div class="settings-panel glass-panel" id="pencil-settings">
+        <h3 class="text-xs font-bold mb-4 uppercase opacity-50 tracking-wider">Pencil & Palette</h3>
+        <div class="flex justify-between text-[10px] mb-2 uppercase tracking-wide"><span>Stroke Size</span><span id="size-val">5px</span></div>
+        <div class="flex items-center gap-3 mb-4">
+            <button class="stepper-btn" id="size-dec"><i class="fa-solid fa-minus text-zinc-400"></i></button>
+            <input type="range" class="flex-1 accent-blue-500 bg-zinc-700/50 h-1.5 rounded-lg appearance-none" id="stroke-size" min="1" max="50" value="5">
+            <button class="stepper-btn" id="size-inc"><i class="fa-solid fa-plus text-zinc-400"></i></button>
+        </div>
+        <div class="grid grid-cols-5 gap-2" id="color-palette">
+            <!-- Colors hydrated via JS -->
+        </div>
+    </div>
+
+    <!-- Smart Corrector with Advanced Math tools settings panel -->
+    <div class="settings-panel glass-panel" id="magic-settings">
+        <h3 class="text-xs font-bold mb-4 uppercase opacity-50 tracking-wider">Smart Math Corrector</h3>
+        <p class="text-[10px] opacity-60 mb-4 leading-relaxed">Draw freehand shapes (circles, ellipses, triangles, quadrilaterals, pentagons, hexagons, angles) and watch them snap to precise geometry with dynamic degrees!</p>
+        <div class="p-3 mb-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-bold text-center tracking-wider uppercase">AUTOCORRECT ACTIVE</div>
+        
+        <div class="h-px bg-zinc-800 my-3"></div>
+        <h4 class="text-xs font-bold mb-3 uppercase opacity-50 tracking-wider">Interactive Math Tools</h4>
+        <div class="space-y-2.5">
+            <button class="w-full p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-200 text-[10px] font-semibold uppercase tracking-wide flex items-center justify-center gap-2 border border-white/5 transition" id="btn-insert-axes">
+                <i class="fa-solid fa-arrows-up-down-left-right text-amber-400"></i> Cartesian Coordinates Grid
+            </button>
+            
+            <div class="p-3 rounded-xl bg-zinc-900/50 border border-white/5 space-y-2">
+                <span class="block text-[9px] font-bold uppercase text-zinc-400 tracking-wider">Function Grapher</span>
+                <div class="flex gap-1.5">
+                    <input type="text" id="math-formula-input" placeholder="e.g. sin(x), x^2, cos(2*x)" class="flex-1 px-3 py-2 rounded-lg bg-zinc-950/80 border border-white/10 text-[10px] text-zinc-100 focus:outline-none focus:border-blue-500 transition">
+                    <button class="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-[10px] font-bold transition" id="btn-plot-formula">Plot</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Canvas Background settings panel -->
+    <div class="settings-panel glass-panel" id="bg-settings">
+        <h3 class="text-xs font-bold mb-4 uppercase opacity-50 tracking-wider">Canvas Environment</h3>
+        <div class="grid grid-cols-3 gap-2 mb-4">
+            <button class="p-2.5 rounded-xl bg-white/5 text-[10px] font-medium tracking-wider active-mode" id="bg-none">PLAIN</button>
+            <button class="p-2.5 rounded-xl bg-white/5 text-[10px] font-medium tracking-wider" id="bg-dots">DOTS</button>
+            <button class="p-2.5 rounded-xl bg-white/5 text-[10px] font-medium tracking-wider" id="bg-squares">SQUARES</button>
+        </div>
+        <div class="grid grid-cols-5 gap-2" id="bg-palette">
+            <!-- Hydrated dynamically -->
+        </div>
+    </div>
+
+    <!-- Hand & Image Controls settings panel -->
+    <div class="settings-panel glass-panel" id="object-settings">
+        <h3 class="text-xs font-bold mb-4 uppercase opacity-50 tracking-wider">Hand & Navigation</h3>
+        <div id="selection-hint" class="text-[10px] text-zinc-400 mb-2 italic leading-relaxed">Drag empty space to pan. Tap any uploaded image to select, resize, rotate, crop, or delete it directly.</div>
+        <div id="object-controls" class="hidden space-y-3">
+            <div class="h-px bg-zinc-800 my-2"></div>
+            <p class="text-[10px] uppercase font-bold text-blue-400">Selected Image Actions:</p>
+            <button class="w-full p-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-[10px] font-bold uppercase transition flex items-center justify-center gap-2 border border-amber-500/20" id="btn-crop-mode">
+                <i class="fa-solid fa-crop"></i> <span id="crop-text">Enter Crop Mode</span>
+            </button>
+            <button class="w-full p-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] font-bold uppercase transition flex items-center justify-center gap-2 border border-red-500/20" id="btn-delete-selected">
+                <i class="fa-solid fa-trash"></i> Delete Selected
+            </button>
+        </div>
+    </div>
+
+    <!-- Eraser settings panel -->
+    <div class="settings-panel glass-panel" id="eraser-settings">
+        <h3 class="text-xs font-bold mb-4 uppercase opacity-50 tracking-wider">Eraser Mode</h3>
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <button class="p-3 rounded-xl bg-white/5 font-semibold text-[10px]" id="mode-smooth">SMOOTH</button>
+            <button class="p-3 rounded-xl bg-white/5 font-semibold text-[10px]" id="mode-stroke">STROKE</button>
+        </div>
+        <div class="flex justify-between text-[10px] mb-2 uppercase tracking-wide"><span>Eraser Size</span><span id="eraser-val">40px</span></div>
+        <div class="flex items-center gap-3 mb-4">
+            <button class="stepper-btn" id="eraser-dec"><i class="fa-solid fa-minus text-zinc-400"></i></button>
+            <input type="range" class="flex-1 accent-blue-500 bg-zinc-700/50 h-1.5 rounded-lg appearance-none" id="eraser-size" min="10" max="100" value="40">
+            <button class="stepper-btn" id="eraser-inc"><i class="fa-solid fa-plus text-zinc-400"></i></button>
+        </div>
+    </div>
+
+    <!-- Page manager panel -->
+    <div class="settings-panel glass-panel" id="page-settings">
+        <h3 class="text-xs font-bold mb-4 uppercase opacity-50 tracking-wider">Page Manager</h3>
+        <div id="page-list" class="space-y-2 mb-4 max-h-40 overflow-y-auto pr-1"></div>
+        <button class="w-full p-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl text-xs font-bold tracking-wider transition text-center shadow-lg shadow-blue-600/20" id="add-page-btn">+ Create New Page</button>
+    </div>
+
+    <!-- Zoom indication and minimap -->
+    <div class="zoom-indicator glass-panel">Zoom: <span id="zoom-val">100</span>%</div>
+    <div id="minimap-container" class="glass-panel"><canvas id="minimap-canvas"></canvas></div>
+    
+    <div class="w-screen h-screen" id="container" style="background-color: var(--bg-canvas);">
+        <canvas id="mainCanvas"></canvas>
+    </div>
+
+    <!-- Custom Authentication Modal -->
+    <div class="modal-overlay" id="auth-modal">
+        <div class="modal-card glass-panel p-8 text-zinc-100 flex flex-col gap-6">
+            <div class="flex justify-between items-center border-b border-white/10 pb-4">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-cloud-arrow-up text-blue-400 text-lg"></i>
+                    <h3 class="font-bold text-base tracking-wide">Cloud Save & Sync</h3>
+                </div>
+                <button onclick="document.getElementById('auth-modal').classList.remove('active')" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark text-zinc-400"></i>
+                </button>
+            </div>
+            
+            <div id="unauth-form" class="space-y-4">
+                <p class="text-xs text-zinc-400 leading-relaxed">
+                    Connect your professional whiteboard session to our cloud to auto-backup across devices and share drawings instantly.
+                </p>
+                
+                <!-- Google Authentication Entry -->
+                <button id="btn-google-login" class="w-full py-3 bg-white hover:bg-zinc-100 text-zinc-900 rounded-xl text-xs font-bold tracking-wider transition flex items-center justify-center gap-2.5 shadow-md">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.69c-.29 1.5-.1.14-.14 2.12c-.83 1.15-2 2.12-3.41 2.8v2.32h5.51c3.22-2.97 5.09-7.34 5.09-11.27z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-5.51-2.32c-1.53.62-3.21.99-4.45.99c-3.22 0-5.95-2.18-6.93-5.11H1.54v2.4C3.52 21.09 7.47 24 12 24z"/>
+                        <path fill="#FBBC05" d="M5.07 14.65c-.25-.7-.39-1.47-.39-2.27c0-.8.14-1.57.39-2.27V7.71H1.54C.7 9.4 0 11.23 0 12.38c0 1.15.7 2.98 1.54 4.67l3.53-2.4z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.96 1.19 15.24 0 12 0C7.47 0 3.52 2.91 1.54 6.91l3.53 2.4c.98-2.93 3.71-5.11 6.93-5.11z"/>
+                    </svg>
+                    Continue with Google
+                </button>
+
+                <div class="flex items-center gap-3 my-2">
+                    <div class="flex-1 h-px bg-white/10"></div>
+                    <span class="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">or use email</span>
+                    <div class="flex-1 h-px bg-white/10"></div>
+                </div>
+
+                <!-- Custom Email/Password Authentication Forms -->
+                <div class="space-y-2.5">
+                    <div id="signup-name-field" class="space-y-1 hidden">
+                        <label class="block text-[9px] font-bold uppercase text-zinc-500 tracking-wider">Your Profile Name</label>
+                        <input type="text" id="auth-name-input" placeholder="e.g. Architect Pro" class="w-full px-4 py-2.5 rounded-xl bg-zinc-900/60 border border-white/10 text-xs focus:border-blue-500 focus:outline-none transition">
+                    </div>
+                    
+                    <div class="space-y-1">
+                        <label class="block text-[9px] font-bold uppercase text-zinc-500 tracking-wider">Email Address</label>
+                        <input type="email" id="auth-email" placeholder="Enter your email..." class="w-full px-4 py-2.5 rounded-xl bg-zinc-900/60 border border-white/10 text-xs focus:border-blue-500 focus:outline-none transition">
+                    </div>
+                    
+                    <div class="space-y-1">
+                        <label class="block text-[9px] font-bold uppercase text-zinc-500 tracking-wider">Password</label>
+                        <input type="password" id="auth-password" placeholder="••••••••" class="w-full px-4 py-2.5 rounded-xl bg-zinc-900/60 border border-white/10 text-xs focus:border-blue-500 focus:outline-none transition">
+                    </div>
+
+                    <button id="btn-submit-email" class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold tracking-wider transition flex items-center justify-center gap-2">
+                        <span id="submit-btn-text">Sign In with Email</span>
+                    </button>
+                    
+                    <div class="text-center pt-1.5">
+                        <button id="btn-toggle-auth-mode" class="text-[10px] text-blue-400 hover:text-blue-300 transition underline tracking-wide">
+                            Don't have an account? Sign Up
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 my-2">
+                    <div class="flex-1 h-px bg-white/5"></div>
+                </div>
+
+                <!-- Guest Setup Option -->
+                <div class="text-center">
+                    <div class="flex items-center gap-1.5 justify-center mb-1">
+                        <input type="text" id="sync-username" placeholder="Guest name..." class="w-24 px-2 py-1 rounded bg-zinc-900/60 border border-white/10 text-[10px] focus:outline-none" value="Architect Guest">
+                        <button id="btn-login" class="text-[10px] text-zinc-400 hover:text-zinc-200 bg-white/5 px-2.5 py-1 rounded transition tracking-wide font-semibold uppercase">
+                            Use Guest Sync
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="auth-info" class="space-y-5 hidden">
+                <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                        <i class="fa-solid fa-user text-emerald-400"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-bold text-zinc-100" id="logged-in-profile">Guest Profile</h4>
+                        <p class="text-[10px] text-zinc-400">Cloud Sync Status: Active</p>
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center text-[11px] text-zinc-400">
+                        <span>Database Reference ID</span>
+                        <code class="text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-[10px]" id="db-ref-id">Generating...</code>
+                    </div>
+                    <div class="flex justify-between items-center text-[11px] text-zinc-400">
+                        <span>Last Save Operation</span>
+                        <span id="last-sync-time" class="font-medium text-zinc-200">Just Now</span>
+                    </div>
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button id="btn-force-save" class="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 border border-white/5">
+                        <i class="fa-solid fa-rotate"></i> Sync State Now
+                    </button>
+                    <button id="btn-logout" class="flex-1 py-3 bg-red-950/40 hover:bg-red-900/50 text-red-400 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 border border-red-500/20">
+                        <i class="fa-solid fa-power-off"></i> Disconnect
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Core Modules -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global State Variables & Setup
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const mCanvas = document.getElementById('minimap-canvas');
+        const mCtx = mCanvas.getContext('2d');
+        const imgCache = new Map();
+
+        // Canvas & Drawing Engine State
+        let state = {
+            tool: 'pencil',
+            eraserMode: 'smooth',
+            size: 5,
+            color: '#ffffff',
+            zoom: 1,
+            offsetX: 0,
+            offsetY: 0,
+            isDrawing: false,
+            isCropping: false,
+            selectedId: null,
+            activePageIndex: 0,
+            bgType: 'none',
+            bgColor: '#1e1e24',
+            dpr: window.devicePixelRatio || 1,
+            pages: [{ paths: [], history: [], redoStack: [] }]
+        };
+
+        let currentPath = null;
+        let lastX = 0, lastY = 0;
+        let authSession = { loggedIn: false, userId: null, profileName: 'Offline Board' };
+
+        // Firebase Integration Constants and Instantiation
+        let db = null;
+        let auth = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'pro-board-standard';
+
+        try {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+            }
+        } catch (e) {
+            console.warn("Firebase initialization skipped or not configured in environment.", e);
+        }
+
+        if (auth) {
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    authSession.loggedIn = true;
+                    authSession.userId = user.uid;
+                    authSession.profileName = user.displayName || user.email || "Architect User";
+                    
+                    // Set Up Sync UI
+                    document.getElementById('logged-in-profile').innerText = authSession.profileName;
+                    document.getElementById('db-ref-id').innerText = user.uid;
+                    document.getElementById('unauth-form').classList.add('hidden');
+                    document.getElementById('auth-info').classList.remove('hidden');
+                    document.getElementById('auth-username').innerText = authSession.profileName;
+                    document.getElementById('auth-icon').className = "fa-solid fa-circle-check text-emerald-400";
+                    
+                    // Attempt to fetch existing cloud save before overwriting
+                    await loadWhiteboardFromCloud();
+                    showStatusMessage("Synced Online", "emerald");
+                } else {
+                    authSession.loggedIn = false;
+                    authSession.userId = null;
+                    authSession.profileName = "Offline Board";
+                    
+                    document.getElementById('unauth-form').classList.remove('hidden');
+                    document.getElementById('auth-info').classList.add('hidden');
+                    document.getElementById('auth-username').innerText = "Sign In / Sync";
+                    document.getElementById('auth-icon').className = "fa-solid fa-cloud-arrow-up text-blue-400";
+                    document.getElementById('cloud-status-badge').classList.add('hidden');
+                }
+            });
+        }
+
+        // Initiate connection to Firebase Auth anonymously (Guest Mode)
+        async function runCloudAuthentication(profileName) {
+            if (!auth || !db) {
+                console.warn("Sync inactive: Cloud Database Configuration missing.");
+                showStatusMessage("No Database Configured", "red");
+                return;
+            }
+            try {
+                showStatusMessage("Connecting Guest...", "yellow");
+                const userCredential = await signInAnonymously(auth);
+                const user = userCredential.user;
+                if (profileName && profileName !== "Architect Guest") {
+                    try {
+                        await updateProfile(user, { displayName: profileName });
+                    } catch (e) {
+                        console.warn("Could not set displayName on guest user: ", e);
+                    }
+                }
+                authModal.classList.remove('active');
+            } catch (err) {
+                console.error("Authentication process error: ", err);
+                showStatusMessage("Connection Failed", "red");
+            }
+        }
+
+        // Save Current Application Vector State to Cloud
+        async function saveWhiteboardToCloud() {
+            if (!authSession.loggedIn || !db) return;
+            showStatusMessage("Syncing State...", "yellow");
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', authSession.userId, 'whiteboardState', 'main');
+                
+                // Serialize paths cleanly
+                const serializedPages = state.pages.map(page => {
+                    const cleanedPaths = page.paths.map(p => {
+                        if (p.type === 'image') {
+                            return {
+                                type: 'image',
+                                src: p.src,
+                                x: p.x,
+                                y: p.y,
+                                w: p.w,
+                                h: p.h,
+                                rotation: p.rotation,
+                                crop: p.crop
+                            };
+                        }
+                        return p;
+                    });
+                    return {
+                        paths: cleanedPaths,
+                        history: [], 
+                        redoStack: []
+                    };
+                });
+
+                await setDoc(docRef, {
+                    pages: serializedPages,
+                    activePageIndex: state.activePageIndex,
+                    bgType: state.bgType,
+                    bgColor: state.bgColor,
+                    profileName: authSession.profileName,
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+
+                const now = new Date();
+                document.getElementById('last-sync-time').innerText = now.toLocaleTimeString();
+                showStatusMessage("Cloud Synced", "emerald");
+            } catch (err) {
+                console.error("Cloud syncing error: ", err);
+                showStatusMessage("Sync Error", "red");
+            }
+        }
+
+        // Restore Application State from Cloud Backup
+        async function loadWhiteboardFromCloud() {
+            if (!authSession.loggedIn || !db) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', authSession.userId, 'whiteboardState', 'main');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const cloudData = docSnap.data();
+                    state.bgType = cloudData.bgType || 'none';
+                    state.bgColor = cloudData.bgColor || '#1e1e24';
+                    state.activePageIndex = cloudData.activePageIndex || 0;
+                    
+                    // Process pages back into canvas local state
+                    if (cloudData.pages && cloudData.pages.length > 0) {
+                        state.pages = cloudData.pages.map(page => {
+                            return {
+                                paths: page.paths || [],
+                                history: [JSON.stringify(page.paths || [])],
+                                redoStack: []
+                            };
+                        });
+                    }
+                    
+                    setBGColor(state.bgColor);
+                    setPattern(state.bgType);
+                    updatePageList();
+                    render();
+                } else {
+                    await saveWhiteboardToCloud();
+                }
+            } catch (err) {
+                console.error("Failed to recover cloud drawing profile state: ", err);
+            }
+        }
+
+        // Show cloud status notifications on top bar
+        function showStatusMessage(text, color) {
+            const badge = document.getElementById('cloud-status-badge');
+            const dot = document.getElementById('status-dot');
+            const label = document.getElementById('status-text');
+            badge.classList.remove('hidden');
+            
+            dot.className = `w-2.5 h-2.5 rounded-full animate-pulse bg-${color}-400`;
+            label.innerText = text;
+        }
+
+        // Log out clean state reset
+        async function logOutSession() {
+            if (auth) {
+                await signOut(auth);
+            }
+            authSession.loggedIn = false;
+            authSession.userId = null;
+            authSession.profileName = "Offline Board";
+            
+            document.getElementById('unauth-form').classList.remove('hidden');
+            document.getElementById('auth-info').classList.add('hidden');
+            document.getElementById('auth-username').innerText = "Sign In / Sync";
+            document.getElementById('auth-icon').className = "fa-solid fa-cloud-arrow-up text-blue-400";
+            document.getElementById('cloud-status-badge').classList.add('hidden');
+            document.getElementById('auth-modal').classList.remove('active');
+        }
+
+        // Resize listener mapping
+        function resize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            canvas.width = width * state.dpr;
+            canvas.height = height * state.dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            ctx.scale(state.dpr, state.dpr);
+            mCanvas.width = 140;
+            mCanvas.height = 90;
+            render();
+        }
+
+        window.addEventListener('resize', resize);
+        
+        // Settings panel view controller toggling
+        function togglePanel(btnId, panelId) {
+            const panels = ['pencil-settings', 'eraser-settings', 'page-settings', 'object-settings', 'bg-settings', 'magic-settings'];
+            const target = document.getElementById(panelId);
+            const isVisible = target && target.style.display === 'block';
+
+            // Reset panels layout visibility
+            panels.forEach(p => {
+                const el = document.getElementById(p);
+                if(el) el.style.display = 'none';
+            });
+            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+            
+            const btn = document.getElementById(btnId);
+            if(btn) btn.classList.add('active');
+            state.tool = btnId.split('-')[0];
+
+            // Toggle logic behavior
+            if (target && !isVisible) {
+                target.style.display = 'block';
+                if (panelId === 'page-settings') updatePageList();
+                if (panelId === 'object-settings') updateObjectPanel();
+            }
+        }
+
+        // Apply environment board color
+        function setBGColor(c) {
+            state.bgColor = c;
+            document.getElementById('container').style.backgroundColor = c;
+            render();
+            if (authSession.loggedIn) saveWhiteboardToCloud();
+        }
+
+        // Apply grid patterns natively onto canvas container background
+        function setPattern(p) {
+            state.bgType = p;
+            const cont = document.getElementById('container');
+            cont.classList.remove('bg-dots', 'bg-squares');
+            if(p !== 'none') cont.classList.add('bg-' + p);
+            document.querySelectorAll('#bg-settings button').forEach(b => b.classList.remove('active-mode'));
+            
+            const matchedBtn = document.getElementById('bg-' + p);
+            if (matchedBtn) matchedBtn.classList.add('active-mode');
+            if (authSession.loggedIn) saveWhiteboardToCloud();
+        }
+
+        function updateBrushSize(v) { 
+            state.size = parseInt(v); 
+            document.getElementById('stroke-size').value = v;
+            document.getElementById('size-val').innerText = v + 'px'; 
+        }
+
+        // Multiplier stepper modifications for precise drawing sizing
+        function adjustSize(d) {
+            const el = document.getElementById('stroke-size');
+            const targetVal = Math.max(1, Math.min(50, parseInt(el.value) + d));
+            updateBrushSize(targetVal);
+        }
+        
+        function adjustEraser(d) {
+            const el = document.getElementById('eraser-size');
+            const targetVal = Math.max(10, Math.min(100, parseInt(el.value) + d));
+            state.size = targetVal;
+            el.value = targetVal;
+            document.getElementById('eraser-val').innerText = targetVal + 'px';
+        }
+
+        function setBrushColor(c, el) { 
+            state.color = c;
+            document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+            if(el) {
+                if(el.classList.contains('color-dot')) el.classList.add('active');
+                else el.parentElement.classList.add('active');
+            }
+        }
+
+        function setEraserMode(m) {
+            state.eraserMode = m;
+            document.getElementById('mode-smooth').classList.toggle('active-mode', m === 'smooth');
+            document.getElementById('mode-stroke').classList.toggle('active-mode', m === 'stroke');
+        }
+
+        // Low level vector draw routine for render loop
+        async function drawObject(c, obj) {
+            c.save();
+            if (obj.type === 'image') {
+                let imgElement = imgCache.get(obj.src);
+                if (!imgElement) {
+                    imgElement = new Image();
+                    imgElement.src = obj.src;
+                    imgCache.set(obj.src, imgElement);
+                    imgElement.onload = () => render();
+                }
+
+                if (imgElement.complete && imgElement.naturalWidth !== 0) {
+                    c.translate(obj.x + obj.w / 2, obj.y + obj.h / 2);
+                    c.rotate(obj.rotation);
+                    const sx = obj.crop.x * imgElement.naturalWidth;
+                    const sy = obj.crop.y * imgElement.naturalHeight;
+                    const sw = obj.crop.w * imgElement.naturalWidth;
+                    const sh = obj.crop.h * imgElement.naturalHeight;
+                    c.drawImage(imgElement, sx, sy, sw, sh, -obj.w / 2, -obj.h / 2, obj.w, obj.h);
+                }
+            } else {
+                c.beginPath();
+                c.lineCap = 'round'; 
+                c.lineJoin = 'round';
+                c.strokeStyle = obj.color;
+                c.lineWidth = obj.size;
+                if (obj.isEraser) c.globalCompositeOperation = 'destination-out';
+                
+                if (obj.points && obj.points.length > 0) {
+                    c.moveTo(obj.points[0].x, obj.points[0].y);
+                    obj.points.forEach(p => c.lineTo(p.x, p.y));
+                }
+                c.stroke();
+
+                // Advanced Mathematics Overlay: Angle protractor & text calculations
+                if (obj.label && obj.labelPos) {
+                    c.fillStyle = obj.color || '#ffffff';
+                    c.font = `bold ${13 / state.zoom}px Inter, sans-serif`;
+                    c.textAlign = 'center';
+                    c.textBaseline = 'middle';
+                    c.fillText(obj.label, obj.labelPos.x, obj.labelPos.y);
+                }
+            }
+            c.restore();
+        }
+
+        // Full Board Graphics Rendering loop
+        function render() {
+            ctx.clearRect(0, 0, canvas.width / state.dpr, canvas.height / state.dpr);
+            ctx.save();
+            ctx.translate(state.offsetX, state.offsetY);
+            ctx.scale(state.zoom, state.zoom);
+
+            const page = state.pages[state.activePageIndex];
+            if (page && page.paths) {
+                page.paths.forEach((obj, idx) => {
+                    drawObject(ctx, obj);
+                    if (state.tool === 'hand' && state.selectedId === idx) drawObjectUI(ctx, obj);
+                });
+            }
+
+            if (currentPath) drawObject(ctx, currentPath);
+
+            ctx.restore();
+            document.getElementById('zoom-val').innerText = Math.round(state.zoom * 100);
+            renderMinimap();
+        }
+
+        // Draw Interactive Transformation box borders on selected graphic assets
+        function drawObjectUI(c, obj) {
+            c.save();
+            c.translate(obj.x + obj.w / 2, obj.y + obj.h / 2);
+            c.rotate(obj.rotation);
+            c.strokeStyle = state.isCropping ? '#facc15' : '#3b82f6';
+            c.lineWidth = 2 / state.zoom;
+            c.setLineDash([5 / state.zoom, 5 / state.zoom]);
+            c.strokeRect(-obj.w / 2, -obj.h / 2, obj.w, obj.h);
+            c.setLineDash([]);
+            
+            // "X" Deletion Badge overlay
+            c.fillStyle = '#ef4444';
+            c.beginPath();
+            c.arc(obj.w / 2, -obj.h / 2, 16 / state.zoom, 0, Math.PI * 2);
+            c.fill();
+            c.fillStyle = 'white';
+            c.font = `bold ${18 / state.zoom}px Arial`;
+            c.textAlign = 'center'; 
+            c.textBaseline = 'middle';
+            c.fillText('✕', obj.w / 2, -obj.h / 2);
+            
+            // Resize adjustment handle marker
+            c.fillStyle = '#3b82f6';
+            c.fillRect(obj.w / 2 - 10 / state.zoom, obj.h / 2 - 10 / state.zoom, 20 / state.zoom, 20 / state.zoom);
+            c.restore();
+        }
+
+        // Coordinate projection map conversions
+        function getCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            let rawClientX = e.clientX;
+            let rawClientY = e.clientY;
+
+            if (e.touches && e.touches.length > 0) {
+                rawClientX = e.touches[0].clientX;
+                rawClientY = e.touches[0].clientY;
+            }
+
+            return {
+                x: (rawClientX - rect.left - state.offsetX) / state.zoom,
+                y: (rawClientY - rect.top - state.offsetY) / state.zoom,
+                rawX: rawClientX,
+                rawY: rawClientY
+            };
+        }
+
+        // Register drawing state triggers via cross platform PointerEvents
+        canvas.addEventListener('pointerdown', start);
+        canvas.addEventListener('pointermove', move);
+        canvas.addEventListener('pointerup', end);
+
+        function start(e) {
+            if (e.target !== canvas) return;
+            state.isDrawing = true;
+            const c = getCoords(e);
+            lastX = c.rawX; lastY = c.rawY;
+
+            if (state.tool === 'pencil' || state.tool === 'magic') {
+                currentPath = { type: 'path', points: [{x: c.x, y: c.y}], color: state.color, size: state.size };
+            } else if (state.tool === 'eraser') {
+                if (state.eraserMode === 'stroke') {
+                    deleteStrokeAt(c.x, c.y);
+                    state.isDrawing = false;
+                } else {
+                    currentPath = { type: 'path', points: [{x: c.x, y: c.y}], color: '#000', size: state.size * 2, isEraser: true };
+                }
+            } else if (state.tool === 'hand') {
+                const page = state.pages[state.activePageIndex];
+                let clickedId = null;
+                for (let i = page.paths.length - 1; i >= 0; i--) {
+                    const obj = page.paths[i];
+                    if (obj.type !== 'image') continue;
+                    
+                    const distToDelete = Math.hypot(c.x - (obj.x + obj.w), c.y - obj.y);
+                    if (distToDelete < 20 / state.zoom && state.selectedId === i) {
+                        deleteSelected();
+                        state.isDrawing = false; 
+                        return;
+                    }
+                    if (c.x >= obj.x && c.x <= obj.x + obj.w && c.y >= obj.y && c.y <= obj.y + obj.h) {
+                        clickedId = i; 
+                        break;
+                    }
+                }
+                state.selectedId = clickedId;
+                updateObjectPanel();
+            }
+            render();
+        }
+
+        function move(e) {
+            if (!state.isDrawing) return;
+            const c = getCoords(e);
+            const dx = (c.rawX - lastX);
+            const dy = (c.rawY - lastY);
+            if (currentPath) {
+                currentPath.points.push({x: c.x, y: c.y});
+            } else if (state.tool === 'hand') {
+                const page = state.pages[state.activePageIndex];
+                if (state.selectedId !== null) {
+                    const obj = page.paths[state.selectedId];
+                    const distToResize = Math.hypot(c.x - (obj.x + obj.w), c.y - (obj.y + obj.h));
+                    if (distToResize < 30 / state.zoom) {
+                        obj.w += dx / state.zoom;
+                        obj.h += dy / state.zoom;
+                    } else if (state.isCropping) {
+                        obj.crop.w = Math.max(0.1, obj.crop.w - dx/1000);
+                        obj.crop.h = Math.max(0.1, obj.crop.h - dy/1000);
+                    } else {
+                        obj.x += dx / state.zoom;
+                        obj.y += dy / state.zoom;
+                    }
+                } else {
+                    state.offsetX += dx;
+                    state.offsetY += dy;
+                }
+            }
+            lastX = c.rawX; lastY = c.rawY;
+            render();
+        }
+
+        function end() {
+            if (currentPath) {
+                const page = state.pages[state.activePageIndex];
+                if (state.tool === 'magic') {
+                    const corrected = processMagicShape(currentPath.points);
+                    if (corrected) {
+                        // Check if it's a structural compound shape returned as a complex path configuration
+                        if (corrected.type === 'complex_angle') {
+                            // Already handled internally or added directly
+                        } else {
+                            currentPath.type = 'magic_shape';
+                            currentPath.points = corrected.points || corrected;
+                            if (corrected.label) {
+                                currentPath.label = corrected.label;
+                                currentPath.labelPos = corrected.labelPos;
+                            }
+                            page.paths.push(currentPath);
+                        }
+                    } else {
+                        page.paths.push(currentPath);
+                    }
+                } else {
+                    page.paths.push(currentPath);
+                }
+                saveHistory();
+                if (authSession.loggedIn) saveWhiteboardToCloud();
+            }
+            state.isDrawing = false; 
+            currentPath = null; 
+            render();
+        }
+
+        function distanceToSegment(p, v, w) {
+            const l2 = Math.hypot(v.x - w.x, v.y - w.y) ** 2;
+            if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+            let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)));
+        }
+
+        function rdpSimplify(points, epsilon) {
+            if (points.length <= 2) return points;
+            let maxDist = 0;
+            let index = 0;
+            const end = points.length - 1;
+            for (let i = 1; i < end; i++) {
+                const dist = distanceToSegment(points[i], points[0], points[end]);
+                if (dist > maxDist) {
+                    index = i;
+                    maxDist = dist;
+                }
+            }
+            if (maxDist > epsilon) {
+                const results1 = rdpSimplify(points.slice(0, index + 1), epsilon);
+                const results2 = rdpSimplify(points.slice(index), epsilon);
+                return results1.slice(0, results1.length - 1).concat(results2);
+            } else {
+                return [points[0], points[end]];
+            }
+        }
+
+        // Geometric shape analyzer for Smart Corrector engine with comprehensive mathematical snaps
+        function processMagicShape(pts) {
+            if (pts.length < 10) return null;
+            const start = pts[0], end = pts[pts.length - 1];
+            const dist = Math.hypot(end.x - start.x, end.y - start.y);
+            
+            // Step 1: Detect if the path is closed
+            const isClosed = dist < 45;
+
+            // Step 2: Compute dimensions and bounding box of the sketch
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            pts.forEach(p => {
+                minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+                minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+            });
+            const w = maxX - minX, h = maxY - minY;
+            const cx = minX + w / 2, cy = minY + h / 2;
+
+            if (isClosed) {
+                // Circularity Test
+                let sumR = 0;
+                pts.forEach(p => sumR += Math.hypot(p.x - cx, p.y - cy));
+                const avgR = sumR / pts.length;
+                
+                let varianceR = 0;
+                pts.forEach(p => varianceR += (Math.hypot(p.x - cx, p.y - cy) - avgR) ** 2);
+                const stdDevR = Math.sqrt(varianceR / pts.length);
+
+                // Extremely low variance indicates perfect circle fit
+                if (stdDevR / avgR < 0.12) {
+                    const circlePts = [];
+                    for (let i = 0; i <= 60; i++) {
+                        const a = (i / 60) * Math.PI * 2;
+                        circlePts.push({ x: cx + Math.cos(a) * avgR, y: cy + Math.sin(a) * avgR });
+                    }
+                    return circlePts;
+                }
+
+                // Ellipse Fit
+                if (stdDevR / avgR < 0.22) {
+                    const ellipsePts = [];
+                    const rx = w / 2;
+                    const ry = h / 2;
+                    for (let i = 0; i <= 60; i++) {
+                        const a = (i / 60) * Math.PI * 2;
+                        ellipsePts.push({ x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry });
+                    }
+                    return ellipsePts;
+                }
+
+                // General polygon simplification for Triangles, Rectangles, Pentagons, Hexagons
+                const simplified = rdpSimplify(pts, Math.max(w, h) * 0.08);
+                const numVertices = simplified.length - 1; // Exclude closing overlap
+
+                if (numVertices === 3) {
+                    // Triangle snapping (Equilateral check & Right angle adjustment)
+                    const A = simplified[0], B = simplified[1], C = simplified[2];
+                    const sides = [
+                        Math.hypot(A.x - B.x, A.y - B.y),
+                        Math.hypot(B.x - C.x, B.y - C.y),
+                        Math.hypot(C.x - A.x, C.y - A.y)
+                    ];
+                    
+                    // Check for Right Angle Triangle
+                    const angles = [];
+                    for(let i = 0; i < 3; i++) {
+                        const p1 = simplified[i];
+                        const p2 = simplified[(i+1)%3];
+                        const p3 = simplified[(i+2)%3];
+                        const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
+                        const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
+                        const dot = v1.x * v2.x + v1.y * v2.y;
+                        const lenProduct = Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y);
+                        angles.push(Math.acos(Math.max(-1, Math.min(1, dot / lenProduct))));
+                    }
+                    
+                    const rightAngleIdx = angles.findIndex(a => Math.abs(a - Math.PI/2) < 0.25);
+                    if (rightAngleIdx !== -1) {
+                        // Snap vertex to form a perfect 90 degree coordinate alignment
+                        const targetV = simplified[(rightAngleIdx + 1)%3];
+                        const prevV = simplified[rightAngleIdx];
+                        const nextV = simplified[(rightAngleIdx + 2)%3];
+                        
+                        // Check if vertical/horizontal align
+                        if (Math.abs(prevV.x - targetV.x) < Math.abs(prevV.y - targetV.y)) {
+                            prevV.x = targetV.x;
+                            nextV.y = targetV.y;
+                        } else {
+                            prevV.y = targetV.y;
+                            nextV.x = targetV.x;
+                        }
+                    }
+                    return [simplified[0], simplified[1], simplified[2], simplified[0]];
+                } else if (numVertices === 4) {
+                    // Quadrilateral snapping (Rectangles / Squares)
+                    const ratio = w / h;
+                    if (Math.abs(ratio - 1) < 0.15) {
+                        // Perfect square
+                        const side = (w + h) / 2;
+                        const hs = side / 2;
+                        return [
+                            {x: cx - hs, y: cy - hs},
+                            {x: cx + hs, y: cy - hs},
+                            {x: cx + hs, y: cy + hs},
+                            {x: cx - hs, y: cy + hs},
+                            {x: cx - hs, y: cy - hs}
+                        ];
+                    } else {
+                        // Perfect Rectangle
+                        const hx = w / 2;
+                        const hy = h / 2;
+                        return [
+                            {x: cx - hx, y: cy - hy},
+                            {x: cx + hx, y: cy - hy},
+                            {x: cx + hx, y: cy + hy},
+                            {x: cx - hx, y: cy + hy},
+                            {x: cx - hx, y: cy - hy}
+                        ];
+                    }
+                } else if (numVertices === 5 || numVertices === 6) {
+                    // Regular Polygons (Pentagon / Hexagon)
+                    const polyPts = [];
+                    const avgRadius = (w + h) / 4;
+                    for (let i = 0; i <= numVertices; i++) {
+                        const angle = -Math.PI / 2 + (i / numVertices) * Math.PI * 2;
+                        polyPts.push({ x: cx + Math.cos(angle) * avgRadius, y: cy + Math.sin(angle) * avgRadius });
+                    }
+                    return polyPts;
+                }
+            } else {
+                // Open paths: Line Segment / Angle Arc snapping
+                const simplified = rdpSimplify(pts, 12);
+                if (simplified.length === 2) {
+                    // Straight Line Snapping
+                    const A = simplified[0], B = simplified[1];
+                    const angle = Math.atan2(B.y - A.y, B.x - A.x);
+                    
+                    // Snap to perfectly horizontal/vertical math lines
+                    const thresholds = [0, Math.PI/2, Math.PI, -Math.PI/2, -Math.PI];
+                    for (let t of thresholds) {
+                        if (Math.abs(angle - t) < 0.1) {
+                            const length = Math.hypot(B.x - A.x, B.y - A.y);
+                            B.x = A.x + Math.cos(t) * length;
+                            B.y = A.y + Math.sin(t) * length;
+                            break;
+                        }
+                    }
+                    return [A, B];
+                } else if (simplified.length === 3) {
+                    // Dynamic Angle Recognition (Protractor)
+                    const A = simplified[0];
+                    const B = simplified[1]; // Angle Vertex
+                    const C = simplified[2];
+
+                    const BA_x = A.x - B.x, BA_y = A.y - B.y;
+                    const BC_x = C.x - B.x, BC_y = C.y - B.y;
+
+                    const lenBA = Math.hypot(BA_x, BA_y);
+                    const lenBC = Math.hypot(BC_x, BC_y);
+
+                    if (lenBA > 20 && lenBC > 20) {
+                        const dot = BA_x * BC_x + BA_y * BC_y;
+                        const cosTh = Math.max(-1, Math.min(1, dot / (lenBA * lenBC)));
+                        const theta = Math.acos(cosTh);
+                        const deg = Math.round(theta * 180 / Math.PI);
+
+                        // Arc trace mathematics
+                        const headingA = Math.atan2(BA_y, BA_x);
+                        let headingC = Math.atan2(BC_y, BC_x);
+
+                        let diff = headingC - headingA;
+                        while (diff < -Math.PI) diff += Math.PI * 2;
+                        while (diff > Math.PI) diff -= Math.PI * 2;
+
+                        const arcPts = [];
+                        const arcRadius = 25;
+                        const steps = 15;
+                        for (let i = 0; i <= steps; i++) {
+                            const angle = headingA + (diff * (i / steps));
+                            arcPts.push({
+                                x: B.x + Math.cos(angle) * arcRadius,
+                                y: B.y + Math.sin(angle) * arcRadius
+                            });
+                        }
+
+                        const midAngle = headingA + diff / 2;
+                        const labelPos = {
+                            x: B.x + Math.cos(midAngle) * (arcRadius + 15),
+                            y: B.y + Math.sin(midAngle) * (arcRadius + 15)
+                        };
+
+                        const page = state.pages[state.activePageIndex];
+                        // Push straight legs
+                        page.paths.push({
+                            type: 'path',
+                            color: state.color,
+                            size: state.size,
+                            points: [A, B, C]
+                        });
+
+                        // Return custom mathematical angle details
+                        return {
+                            points: arcPts,
+                            label: `${deg}°`,
+                            labelPos: labelPos
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function insertCoordinatePlane() {
+            const page = state.pages[state.activePageIndex];
+            const cx = (window.innerWidth / 2 - state.offsetX) / state.zoom;
+            const cy = (window.innerHeight / 2 - state.offsetY) / state.zoom;
+            const size = 180 / state.zoom; 
+            const color = state.color;
+            const width = Math.max(2, state.size - 1);
+
+            const mathPaths = [];
+
+            // X-Axis Line
+            mathPaths.push({
+                type: 'path',
+                color: color,
+                size: width,
+                points: [{x: cx - size, y: cy}, {x: cx + size, y: cy}]
+            });
+            // X-Axis Arrowhead
+            mathPaths.push({
+                type: 'path',
+                color: color,
+                size: width,
+                points: [{x: cx + size - 10, y: cy - 6}, {x: cx + size, y: cy}, {x: cx + size - 10, y: cy + 6}]
+            });
+
+            // Y-Axis Line
+            mathPaths.push({
+                type: 'path',
+                color: color,
+                size: width,
+                points: [{x: cx, y: cy - size}, {x: cx, y: cy + size}]
+            });
+            // Y-Axis Arrowhead
+            mathPaths.push({
+                type: 'path',
+                color: color,
+                size: width,
+                points: [{x: cx - 6, y: cy - size + 10}, {x: cx, y: cy - size}, {x: cx + 6, y: cy - size + 10}]
+            });
+
+            // Linear Ticks along dimensions
+            const spacing = size / 6;
+            for (let i = 1; i <= 5; i++) {
+                // X ticks
+                mathPaths.push({
+                    type: 'path',
+                    color: color,
+                    size: Math.max(1, width - 1),
+                    points: [{x: cx + i * spacing, y: cy - 4}, {x: cx + i * spacing, y: cy + 4}]
+                });
+                mathPaths.push({
+                    type: 'path',
+                    color: color,
+                    size: Math.max(1, width - 1),
+                    points: [{x: cx - i * spacing, y: cy - 4}, {x: cx - i * spacing, y: cy + 4}]
+                });
+                // Y ticks
+                mathPaths.push({
+                    type: 'path',
+                    color: color,
+                    size: Math.max(1, width - 1),
+                    points: [{x: cx - 4, y: cy + i * spacing}, {x: cx + 4, y: cy + i * spacing}]
+                });
+                mathPaths.push({
+                    type: 'path',
+                    color: color,
+                    size: Math.max(1, width - 1),
+                    points: [{x: cx - 4, y: cy - i * spacing}, {x: cx + 4, y: cy - i * spacing}]
+                });
+            }
+
+            page.paths.push(...mathPaths);
+            saveHistory();
+            render();
+            if (authSession.loggedIn) saveWhiteboardToCloud();
+            showStatusMessage("Grid Inserted", "emerald");
+        }
+
+        function plotMathFunction(formulaStr) {
+            const page = state.pages[state.activePageIndex];
+            const cx = (window.innerWidth / 2 - state.offsetX) / state.zoom;
+            const cy = (window.innerHeight / 2 - state.offsetY) / state.zoom;
+            const color = state.color;
+            const width = state.size;
+
+            // Formulate mathematical terms safely
+            let expr = formulaStr.toLowerCase()
+                .replace(/sin/g, 'Math.sin')
+                .replace(/cos/g, 'Math.cos')
+                .replace(/tan/g, 'Math.tan')
+                .replace(/sqrt/g, 'Math.sqrt')
+                .replace(/abs/g, 'Math.abs')
+                .replace(/exp/g, 'Math.exp')
+                .replace(/log/g, 'Math.log')
+                .replace(/pi/g, 'Math.PI')
+                .replace(/pow/g, 'Math.pow')
+                .replace(/\^/g, '**');
+
+            const points = [];
+            const scaleX = 40; 
+            const scaleY = 40;
+
+            for (let xVal = -6; xVal <= 6; xVal += 0.05) {
+                try {
+                    // Regex mapping bound variable securely
+                    const runExpr = expr.replace(/\bx\b/g, `(${xVal})`);
+                    const yVal = eval(runExpr);
+                    if (!isNaN(yVal) && isFinite(yVal)) {
+                        points.push({
+                            x: cx + xVal * scaleX,
+                            y: cy - yVal * scaleY 
+                        });
+                    }
+                } catch (e) {
+                    // Suppress computation errors gracefully
+                }
+            }
+
+            if (points.length > 1) {
+                page.paths.push({
+                    type: 'path',
+                    color: color,
+                    size: width,
+                    points: points
+                });
+                saveHistory();
+                render();
+                if (authSession.loggedIn) saveWhiteboardToCloud();
+                showStatusMessage("Function Plotted", "emerald");
+            } else {
+                showStatusMessage("Syntax Error in Expression", "red");
+            }
+        }
+
+        // Image local device input processor and loader
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const obj = {
+                        type: 'image', src: event.target.result,
+                        x: (window.innerWidth / 2 - state.offsetX) / state.zoom - 100,
+                        y: (window.innerHeight / 2 - state.offsetY) / state.zoom - 100,
+                        w: 200, h: 200 * (img.height / img.width), rotation: 0,
+                        crop: { x: 0, y: 0, w: 1, h: 1 }
+                    };
+                    state.pages[state.activePageIndex].paths.push(obj);
+                    saveHistory(); 
+                    render();
+                    if (authSession.loggedIn) saveWhiteboardToCloud();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Segment stroke vector analyzer
+        function deleteStrokeAt(x, y) {
+            const page = state.pages[state.activePageIndex];
+            const originalLength = page.paths.length;
+            page.paths = page.paths.filter(obj => {
+                if (obj.type === 'image') return true;
+                return !obj.points.some(p => Math.hypot(p.x - x, p.y - y) < 20);
+            });
+            if (page.paths.length !== originalLength) { 
+                saveHistory(); 
+                render(); 
+                if (authSession.loggedIn) saveWhiteboardToCloud();
+            }
+        }
+
+        // Local state undo trackers
+        function saveHistory() {
+            const page = state.pages[state.activePageIndex];
+            page.history.push(JSON.stringify(page.paths));
+            if (page.history.length > 30) page.history.shift();
+            page.redoStack = [];
+        }
+
+        function undo() {
+            const page = state.pages[state.activePageIndex];
+            if (page.history.length < 2) return;
+            page.redoStack.push(page.history.pop());
+            page.paths = JSON.parse(page.history[page.history.length - 1]);
+            render();
+            if (authSession.loggedIn) saveWhiteboardToCloud();
+        }
+
+        function redo() {
+            const page = state.pages[state.activePageIndex];
+            if (page.redoStack.length === 0) return;
+            const next = page.redoStack.pop();
+            page.history.push(next);
+            page.paths = JSON.parse(next);
+            render();
+            if (authSession.loggedIn) saveWhiteboardToCloud();
+        }
+
+        function resetView() { state.zoom = 1; state.offsetX = 0; state.offsetY = 0; render(); }
+        function zoomManual(d) { state.zoom = Math.max(0.1, state.zoom + d); render(); }
+        
+        function renderMinimap() {
+            mCtx.fillStyle = '#121214'; 
+            mCtx.fillRect(0,0,140,90);
+            mCtx.save(); 
+            mCtx.scale(0.05, 0.05);
+            const page = state.pages[state.activePageIndex];
+            if (page && page.paths) {
+                page.paths.forEach(o => drawObject(mCtx, o));
+            }
+            mCtx.restore();
+        }
+
+        function deleteSelected() {
+            const page = state.pages[state.activePageIndex];
+            if (state.selectedId !== null && page) {
+                page.paths.splice(state.selectedId, 1);
+                state.selectedId = null;
+                saveHistory(); 
+                updateObjectPanel(); 
+                render();
+                if (authSession.loggedIn) saveWhiteboardToCloud();
+            }
+        }
+
+        function toggleCropMode() {
+            state.isCropping = !state.isCropping;
+            document.getElementById('crop-text').innerText = state.isCropping ? "Exit Crop Mode" : "Enter Crop Mode";
+            render();
+        }
+
+        function updateObjectPanel() {
+            const controls = document.getElementById('object-controls');
+            const hint = document.getElementById('selection-hint');
+            if (state.selectedId !== null) { controls.classList.remove('hidden'); hint.classList.add('hidden'); }
+            else { controls.classList.add('hidden'); hint.classList.remove('hidden'); state.isCropping = false; }
+        }
+
+        function addNewPage() {
+            state.pages.push({ paths: [], history: [], redoStack: [] });
+            state.activePageIndex = state.pages.length - 1;
+            saveHistory(); 
+            updatePageList(); 
+            render();
+            if (authSession.loggedIn) saveWhiteboardToCloud();
+        }
+
+        function updatePageList() {
+            const list = document.getElementById('page-list');
+            list.innerHTML = state.pages.map((p, i) => `
+                <div class="flex items-center justify-between p-3.5 rounded-xl cursor-pointer transition ${state.activePageIndex === i ? 'bg-blue-600 text-white' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}" id="p-item-${i}">
+                    <span class="text-[10px] font-bold tracking-wider">PAGE ${i + 1}</span>
+                </div>
+            `).join('');
+
+            state.pages.forEach((p, i) => {
+                const element = document.getElementById(`p-item-${i}`);
+                if (element) {
+                    element.onclick = () => switchPage(i);
+                }
+            });
+        }
+
+        function switchPage(i) {
+            state.activePageIndex = i; 
+            state.selectedId = null;
+            updatePageList(); 
+            updateObjectPanel(); 
+            render();
+        }
+
+        function confirmClear() {
+            const modalCheck = confirm("Discard drawings on this canvas page permanently?");
+            if(modalCheck) {
+                state.pages[state.activePageIndex].paths = [];
+                state.selectedId = null; 
+                saveHistory(); 
+                updateObjectPanel(); 
+                render();
+                if (authSession.loggedIn) saveWhiteboardToCloud();
+            }
+        }
+
+        function exportPage() {
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+
+            // Paint canvas back plate
+            tempCtx.fillStyle = state.bgColor;
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            // Re-render drawings layers
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Trigger safe container download
+            const link = document.createElement('a');
+            link.download = `pro-board-snapshot-page-${state.activePageIndex + 1}.png`;
+            link.href = tempCanvas.toDataURL("image/png");
+            link.click();
+        }
+
+        // Populate brush colors interface palette
+        function hydrateColorPalette() {
+            const colors = ['#ffffff', '#3b82f6', '#ef4444', '#facc15', '#10b981'];
+            const container = document.getElementById('color-palette');
+            container.innerHTML = colors.map((color, idx) => `
+                <div class="color-dot ${idx === 0 ? 'active' : ''}" style="background-color: ${color};" id="brush-col-${idx}"></div>
+            `).join('') + `
+                <div class="color-dot flex items-center justify-center bg-zinc-800 border border-white/10 cursor-pointer" id="brush-col-custom-trigger">
+                    <i class="fa-solid fa-eye-dropper text-[10px] text-zinc-300"></i>
+                </div>
+                <input type="color" id="custom-pencil-color" class="hidden">
+            `;
+
+            // Setup listeners inside ES Module
+            colors.forEach((color, idx) => {
+                const swatch = document.getElementById(`brush-col-${idx}`);
+                if (swatch) {
+                    swatch.onclick = () => setBrushColor(color, swatch);
+                }
+            });
+
+            const customTrigger = document.getElementById('brush-col-custom-trigger');
+            const customInput = document.getElementById('custom-pencil-color');
+            if (customTrigger && customInput) {
+                customTrigger.onclick = () => customInput.click();
+                customInput.onchange = (e) => setBrushColor(e.target.value, customTrigger);
+            }
+        }
+
+        // Populate backgrounds colors interface palette
+        function hydrateBackgroundPalette() {
+            const colors = ['#1e1e24', '#000000', '#ffffff', '#2c3e50', '#1a1a2e'];
+            const container = document.getElementById('bg-palette');
+            container.innerHTML = colors.map((color, idx) => `
+                <div class="color-dot" style="background-color: ${color}; border: 1px solid rgba(255,255,255,0.1);" id="bg-col-${idx}"></div>
+            `).join('') + `
+                <div class="color-dot flex items-center justify-center bg-zinc-800 border border-white/10 cursor-pointer" id="bg-col-custom-trigger">
+                    <i class="fa-solid fa-plus text-[10px] text-zinc-300"></i>
+                </div>
+                <input type="color" id="custom-bg-color" class="hidden">
+            `;
+
+            colors.forEach((color, idx) => {
+                const swatch = document.getElementById(`bg-col-${idx}`);
+                if (swatch) {
+                    swatch.onclick = () => setBGColor(color);
+                }
+            });
+
+            const customTrigger = document.getElementById('bg-col-custom-trigger');
+            const customInput = document.getElementById('custom-bg-color');
+            if (customTrigger && customInput) {
+                customTrigger.onclick = () => customInput.click();
+                customInput.onchange = (e) => setBGColor(e.target.value);
+            }
+        }
+
+        // Initialize DOM Elements Listeners
+        document.getElementById('pencil-tool').onclick = () => togglePanel('pencil-tool', 'pencil-settings');
+        document.getElementById('magic-tool').onclick = () => togglePanel('magic-tool', 'magic-settings');
+        document.getElementById('eraser-tool').onclick = () => togglePanel('eraser-tool', 'eraser-settings');
+        document.getElementById('hand-tool').onclick = () => togglePanel('hand-tool', 'object-settings');
+        document.getElementById('bg-tool').onclick = () => togglePanel('bg-tool', 'bg-settings');
+        document.getElementById('page-tool').onclick = () => togglePanel('page-tool', 'page-settings');
+        
+        document.getElementById('fit-tool').onclick = resetView;
+        document.getElementById('zoom-in-tool').onclick = () => zoomManual(0.2);
+        document.getElementById('zoom-out-tool').onclick = () => zoomManual(-0.2);
+        document.getElementById('undo-btn').onclick = undo;
+        document.getElementById('redo-btn').onclick = redo;
+        document.getElementById('save-page-btn').onclick = exportPage;
+        document.getElementById('clear-page-btn').onclick = confirmClear;
+
+        document.getElementById('stroke-size').oninput = (e) => updateBrushSize(e.target.value);
+        document.getElementById('size-dec').onclick = () => adjustSize(-2);
+        document.getElementById('size-inc').onclick = () => adjustSize(2);
+
+        document.getElementById('eraser-size').oninput = (e) => {
+            state.size = parseInt(e.target.value);
+            document.getElementById('eraser-val').innerText = e.target.value + 'px';
+        };
+        document.getElementById('eraser-dec').onclick = () => adjustEraser(-5);
+        document.getElementById('eraser-inc').onclick = () => adjustEraser(5);
+
+        document.getElementById('mode-smooth').onclick = () => setEraserMode('smooth');
+        document.getElementById('mode-stroke').onclick = () => setEraserMode('stroke');
+
+        document.getElementById('bg-none').onclick = () => setPattern('none');
+        document.getElementById('bg-dots').onclick = () => setPattern('dots');
+        document.getElementById('bg-squares').onclick = () => setPattern('squares');
+
+        document.getElementById('btn-crop-mode').onclick = toggleCropMode;
+        document.getElementById('btn-delete-selected').onclick = deleteSelected;
+        document.getElementById('add-page-btn').onclick = addNewPage;
+        document.getElementById('file-input').onchange = handleImageUpload;
+
+        // Custom Auth Modals bindings
+        const authBtn = document.getElementById('auth-btn');
+        const authModal = document.getElementById('auth-modal');
+        const loginBtn = document.getElementById('btn-login');
+        const logoutBtn = document.getElementById('btn-logout');
+        const forceSaveBtn = document.getElementById('btn-force-save');
+
+        const googleLoginBtn = document.getElementById('btn-google-login');
+        const submitEmailBtn = document.getElementById('btn-submit-email');
+        const toggleAuthModeBtn = document.getElementById('btn-toggle-auth-mode');
+        const authNameField = document.getElementById('signup-name-field');
+        const authNameInput = document.getElementById('auth-name-input');
+        const authEmailInput = document.getElementById('auth-email');
+        const authPasswordInput = document.getElementById('auth-password');
+        const submitBtnText = document.getElementById('submit-btn-text');
+
+        let isSignUpMode = false;
+
+        if (toggleAuthModeBtn) {
+            toggleAuthModeBtn.onclick = () => {
+                isSignUpMode = !isSignUpMode;
+                if (isSignUpMode) {
+                    authNameField.classList.remove('hidden');
+                    submitBtnText.innerText = "Create Account";
+                    toggleAuthModeBtn.innerText = "Already have an account? Sign In";
+                } else {
+                    authNameField.classList.add('hidden');
+                    submitBtnText.innerText = "Sign In with Email";
+                    toggleAuthModeBtn.innerText = "Don't have an account? Sign Up";
+                }
+            };
+        }
+
+        if (googleLoginBtn) {
+            googleLoginBtn.onclick = async () => {
+                if (!auth) {
+                    showStatusMessage("No Auth Configured", "red");
+                    return;
+                }
+                showStatusMessage("Google Link...", "yellow");
+                try {
+                    const provider = new GoogleAuthProvider();
+                    await signInWithPopup(auth, provider);
+                    authModal.classList.remove('active');
+                } catch (err) {
+                    console.error("Google login failed", err);
+                    showStatusMessage("Google Sync Failed", "red");
+                }
+            };
+        }
+
+        if (submitEmailBtn) {
+            submitEmailBtn.onclick = async () => {
+                if (!auth) {
+                    showStatusMessage("No Auth Configured", "red");
+                    return;
+                }
+                const email = authEmailInput.value.trim();
+                const password = authPasswordInput.value.trim();
+                const name = authNameInput.value.trim();
+
+                if (!email || !password) {
+                    showStatusMessage("Fill all fields", "red");
+                    return;
+                }
+
+                showStatusMessage("Connecting...", "yellow");
+                try {
+                    if (isSignUpMode) {
+                        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                        if (name) {
+                            try {
+                                await updateProfile(userCredential.user, { displayName: name });
+                            } catch (e) {
+                                console.warn("Could not update display name: ", e);
+                            }
+                        }
+                    } else {
+                        await signInWithEmailAndPassword(auth, email, password);
+                    }
+                    authModal.classList.remove('active');
+                } catch (err) {
+                    console.error("Email authentication failed", err);
+                    showStatusMessage(err.message.replace("Firebase: ", ""), "red");
+                }
+            };
+        }
+
+        authBtn.onclick = () => {
+            authModal.classList.add('active');
+        };
+
+        loginBtn.onclick = async () => {
+            const val = document.getElementById('sync-username').value;
+            await runCloudAuthentication(val);
+        };
+
+        logoutBtn.onclick = async () => {
+            await logOutSession();
+        };
+
+        forceSaveBtn.onclick = async () => {
+            await saveWhiteboardToCloud();
+        };
+
+        document.getElementById('btn-insert-axes').onclick = insertCoordinatePlane;
+        document.getElementById('btn-plot-formula').onclick = () => {
+            const formula = document.getElementById('math-formula-input').value;
+            if (formula) {
+                plotMathFunction(formula);
+            } else {
+                showStatusMessage("Please enter a function formula", "yellow");
+            }
+        };
+
+        // Initialize state, build arrays & render immediately
+        hydrateColorPalette();
+        hydrateBackgroundPalette();
+        saveHistory();
+        resize();
+
+        // Safe expose methods to window frame wrapper for external calls
+        window.togglePanel = togglePanel;
+        window.setBGColor = setBGColor;
+        window.setPattern = setPattern;
+        window.exportPage = exportPage;
+        window.confirmClear = confirmClear;
+    </script>
+</body>
+</html>
