@@ -182,6 +182,9 @@
         <button class="tool-btn text-emerald-400 hover:text-emerald-300" id="save-page-btn" title="Save PNG">
             <i class="fa-solid fa-floppy-disk"></i>
         </button>
+        <button class="tool-btn text-cyan-400 hover:text-cyan-300" id="fullscreen-btn" title="Toggle Fullscreen">
+            <i class="fa-solid fa-expand" id="fullscreen-icon"></i>
+        </button>
         <button class="tool-btn text-red-400 hover:text-red-300" id="clear-page-btn" title="Clear page"><i class="fa-solid fa-trash-can"></i></button>
         
         <input type="file" id="file-input" accept="image/*" class="hidden">
@@ -190,6 +193,11 @@
     <!-- Pencil settings panel -->
     <div class="settings-panel glass-panel" id="pencil-settings">
         <h3 class="text-xs font-bold mb-4 uppercase opacity-50 tracking-wider">Pencil & Palette</h3>
+        <div class="grid grid-cols-3 gap-1.5 mb-4">
+            <button class="p-2.5 rounded-xl bg-white/5 font-semibold text-[9px] text-center whitespace-nowrap active-mode" id="pen-mode-normal">SOLID PEN</button>
+            <button class="p-2.5 rounded-xl bg-white/5 font-semibold text-[9px] text-center whitespace-nowrap" id="pen-mode-highlighter">HIGHLIGHTER</button>
+            <button class="p-2.5 rounded-xl bg-white/5 font-semibold text-[9px] text-center whitespace-nowrap text-amber-400" id="pen-mode-laser">LASER POINTER</button>
+        </div>
         <div class="flex justify-between text-[10px] mb-2 uppercase tracking-wide"><span>Stroke Size</span><span id="size-val">5px</span></div>
         <div class="flex items-center gap-3 mb-4">
             <button class="stepper-btn" id="size-dec"><i class="fa-solid fa-minus text-zinc-400"></i></button>
@@ -256,9 +264,10 @@
     <!-- Eraser settings panel -->
     <div class="settings-panel glass-panel" id="eraser-settings">
         <h3 class="text-xs font-bold mb-4 uppercase opacity-50 tracking-wider">Eraser Mode</h3>
-        <div class="grid grid-cols-2 gap-3 mb-4">
-            <button class="p-3 rounded-xl bg-white/5 font-semibold text-[10px]" id="mode-smooth">SMOOTH</button>
-            <button class="p-3 rounded-xl bg-white/5 font-semibold text-[10px]" id="mode-stroke">STROKE</button>
+        <div class="grid grid-cols-3 gap-1.5 mb-4">
+            <button class="p-2.5 rounded-xl bg-white/5 font-semibold text-[10px]" id="mode-smooth">SMOOTH</button>
+            <button class="p-2.5 rounded-xl bg-white/5 font-semibold text-[10px]" id="mode-stroke">STROKE</button>
+            <button class="p-2.5 rounded-xl bg-white/5 font-semibold text-[10px]" id="mode-encircle">ENCIRCLE</button>
         </div>
         <div class="flex justify-between text-[10px] mb-2 uppercase tracking-wide"><span>Eraser Size</span><span id="eraser-val">40px</span></div>
         <div class="flex items-center gap-3 mb-4">
@@ -409,6 +418,7 @@
         // Canvas & Drawing Engine State
         let state = {
             tool: 'pencil',
+            penMode: 'normal',
             eraserMode: 'smooth',
             size: 5,
             color: '#ffffff',
@@ -422,12 +432,48 @@
             bgType: 'none',
             bgColor: '#1e1e24',
             dpr: window.devicePixelRatio || 1,
-            pages: [{ paths: [], history: [], redoStack: [] }]
+            pages: [{ paths: [], history: [], redoStack: [] }],
+            tempPaths: [],
+            activeTempPath: null
         };
 
         let currentPath = null;
         let lastX = 0, lastY = 0;
         let authSession = { loggedIn: false, userId: null, profileName: 'Offline Board' };
+
+        let animFrameId = null;
+        function startAnimationLoop() {
+            if (!animFrameId) {
+                animFrameId = requestAnimationFrame(tick);
+            }
+        }
+
+        function tick() {
+            animFrameId = null;
+            let needsMoreTicks = false;
+            const now = Date.now();
+
+            if (state.activeTempPath) {
+                state.activeTempPath.points = state.activeTempPath.points.filter(p => now - p.time < 1000);
+                if (state.activeTempPath.points.length > 0) needsMoreTicks = true;
+            }
+
+            for (let i = state.tempPaths.length - 1; i >= 0; i--) {
+                const tp = state.tempPaths[i];
+                tp.points = tp.points.filter(p => now - p.time < 1000);
+                if (tp.points.length === 0) {
+                    state.tempPaths.splice(i, 1);
+                } else {
+                    needsMoreTicks = true;
+                }
+            }
+
+            render();
+
+            if (needsMoreTicks || state.activeTempPath || state.isDrawing) {
+                animFrameId = requestAnimationFrame(tick);
+            }
+        }
 
         // Firebase Integration Constants and Instantiation
         let db = null;
@@ -710,11 +756,32 @@
             state.eraserMode = m;
             document.getElementById('mode-smooth').classList.toggle('active-mode', m === 'smooth');
             document.getElementById('mode-stroke').classList.toggle('active-mode', m === 'stroke');
+            const encCircleBtn = document.getElementById('mode-encircle');
+            if (encCircleBtn) encCircleBtn.classList.toggle('active-mode', m === 'encircle');
         }
 
         // Low level vector draw routine for render loop
         async function drawObject(c, obj) {
             c.save();
+            if (obj.isLasso) {
+                c.beginPath();
+                c.setLineDash([4 / state.zoom, 4 / state.zoom]);
+                c.lineCap = 'round';
+                c.lineJoin = 'round';
+                c.strokeStyle = '#ef4444';
+                c.lineWidth = 2 / state.zoom;
+                if (obj.points && obj.points.length > 0) {
+                    c.moveTo(obj.points[0].x, obj.points[0].y);
+                    obj.points.forEach(p => c.lineTo(p.x, p.y));
+                    c.lineTo(obj.points[0].x, obj.points[0].y);
+                }
+                c.stroke();
+                c.setLineDash([]);
+                c.fillStyle = 'rgba(239, 68, 68, 0.08)';
+                c.fill();
+                c.restore();
+                return;
+            }
             if (obj.type === 'image') {
                 let imgElement = imgCache.get(obj.src);
                 if (!imgElement) {
@@ -740,6 +807,7 @@
                 c.strokeStyle = obj.color;
                 c.lineWidth = obj.size;
                 if (obj.isEraser) c.globalCompositeOperation = 'destination-out';
+                if (obj.isHighlighter) c.globalAlpha = 0.45;
                 
                 if (obj.points && obj.points.length > 0) {
                     c.moveTo(obj.points[0].x, obj.points[0].y);
@@ -775,6 +843,35 @@
             }
 
             if (currentPath) drawObject(ctx, currentPath);
+
+            ctx.save();
+            const now = Date.now();
+            const drawLaserPath = (lp) => {
+                if (!lp || lp.points.length < 2) return;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                for (let i = 1; i < lp.points.length; i++) {
+                    const p1 = lp.points[i - 1];
+                    const p2 = lp.points[i];
+                    const age = now - p2.time;
+                    const lifeRatio = Math.max(0, 1 - age / 1000);
+                    if (lifeRatio <= 0) continue;
+
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.strokeStyle = lp.color;
+                    ctx.lineWidth = lp.size * lifeRatio;
+                    ctx.globalAlpha = lifeRatio * 0.85;
+                    ctx.shadowBlur = 12 * lifeRatio;
+                    ctx.shadowColor = lp.color;
+                    ctx.stroke();
+                }
+            };
+
+            if (state.activeTempPath) drawLaserPath(state.activeTempPath);
+            state.tempPaths.forEach(drawLaserPath);
+            ctx.restore();
 
             ctx.restore();
             document.getElementById('zoom-val').innerText = Math.round(state.zoom * 100);
@@ -840,11 +937,29 @@
             lastX = c.rawX; lastY = c.rawY;
 
             if (state.tool === 'pencil' || state.tool === 'magic') {
-                currentPath = { type: 'path', points: [{x: c.x, y: c.y}], color: state.color, size: state.size };
+                if (state.penMode === 'laser') {
+                    state.activeTempPath = {
+                        type: 'laser',
+                        points: [{x: c.x, y: c.y, time: Date.now()}],
+                        color: state.color,
+                        size: Math.max(10, state.size * 2.2)
+                    };
+                    startAnimationLoop();
+                } else {
+                    currentPath = { 
+                        type: 'path', 
+                        points: [{x: c.x, y: c.y}], 
+                        color: state.color, 
+                        size: state.size,
+                        isHighlighter: state.penMode === 'highlighter'
+                    };
+                }
             } else if (state.tool === 'eraser') {
                 if (state.eraserMode === 'stroke') {
                     deleteStrokeAt(c.x, c.y);
                     state.isDrawing = false;
+                } else if (state.eraserMode === 'encircle') {
+                    currentPath = { type: 'path', points: [{x: c.x, y: c.y}], isLasso: true };
                 } else {
                     currentPath = { type: 'path', points: [{x: c.x, y: c.y}], color: '#000', size: state.size * 2, isEraser: true };
                 }
@@ -877,7 +992,9 @@
             const c = getCoords(e);
             const dx = (c.rawX - lastX);
             const dy = (c.rawY - lastY);
-            if (currentPath) {
+            if (state.activeTempPath) {
+                state.activeTempPath.points.push({x: c.x, y: c.y, time: Date.now()});
+            } else if (currentPath) {
                 currentPath.points.push({x: c.x, y: c.y});
             } else if (state.tool === 'hand') {
                 const page = state.pages[state.activePageIndex];
@@ -904,9 +1021,15 @@
         }
 
         function end() {
-            if (currentPath) {
+            if (state.activeTempPath) {
+                state.tempPaths.push(state.activeTempPath);
+                state.activeTempPath = null;
+                startAnimationLoop();
+            } else if (currentPath) {
                 const page = state.pages[state.activePageIndex];
-                if (state.tool === 'magic') {
+                if (currentPath.isLasso) {
+                    eraseEncircledObjects(currentPath.points);
+                } else if (state.tool === 'magic') {
                     const corrected = processMagicShape(currentPath.points);
                     if (corrected) {
                         // Check if it's a structural compound shape returned as a complex path configuration
@@ -924,15 +1047,64 @@
                     } else {
                         page.paths.push(currentPath);
                     }
+                    saveHistory();
+                    if (authSession.loggedIn) saveWhiteboardToCloud();
                 } else {
                     page.paths.push(currentPath);
+                    saveHistory();
+                    if (authSession.loggedIn) saveWhiteboardToCloud();
                 }
-                saveHistory();
-                if (authSession.loggedIn) saveWhiteboardToCloud();
             }
             state.isDrawing = false; 
             currentPath = null; 
             render();
+        }
+
+        // Helper to check if a 2D point is inside a polygon (Ray-Casting Algorithm)
+        function isPointInPolygon(point, polygon) {
+            const x = point.x, y = point.y;
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].x, yi = polygon[i].y;
+                const xj = polygon[j].x, yj = polygon[j].y;
+                const intersect = ((yi > y) !== (yj > y))
+                    && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        // Calculate centroid of points array for path categorization
+        function getCentroid(points) {
+            if (!points || points.length === 0) return {x:0, y:0};
+            let sumX = 0, sumY = 0;
+            points.forEach(p => { sumX += p.x; sumY += p.y; });
+            return { x: sumX / points.length, y: sumY / points.length };
+        }
+
+        // Deletes any objects inside the drawn lasso boundary loop
+        function eraseEncircledObjects(lassoPoints) {
+            if (lassoPoints.length < 3) return;
+            const page = state.pages[state.activePageIndex];
+            const originalLength = page.paths.length;
+            
+            page.paths = page.paths.filter(obj => {
+                if (obj.type === 'image') {
+                    const center = { x: obj.x + obj.w / 2, y: obj.y + obj.h / 2 };
+                    return !isPointInPolygon(center, lassoPoints);
+                } else if (obj.points && obj.points.length > 0) {
+                    const centroid = getCentroid(obj.points);
+                    return !isPointInPolygon(centroid, lassoPoints);
+                }
+                return true;
+            });
+
+            if (page.paths.length !== originalLength) {
+                saveHistory();
+                render();
+                if (authSession.loggedIn) saveWhiteboardToCloud();
+                showStatusMessage("Encircled Area Erased", "emerald");
+            }
         }
 
         function distanceToSegment(p, v, w) {
@@ -1463,19 +1635,115 @@
         }
 
         function exportPage() {
+            const page = state.pages[state.activePageIndex];
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            let hasObjects = false;
+
+            // Step 1: Calculate the exact bounding box of all paths, magic shapes, and images on the active page
+            if (page && page.paths && page.paths.length > 0) {
+                page.paths.forEach(obj => {
+                    if (obj.type === 'image') {
+                        hasObjects = true;
+                        // Calculate rotated coordinates of image boundaries to avoid clipping rotated assets
+                        const cx = obj.x + obj.w / 2;
+                        const cy = obj.y + obj.h / 2;
+                        const cos = Math.cos(obj.rotation);
+                        const sin = Math.sin(obj.rotation);
+                        const halfW = obj.w / 2;
+                        const halfH = obj.h / 2;
+
+                        const corners = [
+                            { dx: -halfW, dy: -halfH },
+                            { dx: halfW, dy: -halfH },
+                            { dx: halfW, dy: halfH },
+                            { dx: -halfW, dy: halfH }
+                        ];
+
+                        corners.forEach(corner => {
+                            const rx = cx + corner.dx * cos - corner.dy * sin;
+                            const ry = cy + corner.dx * sin + corner.dy * cos;
+                            minX = Math.min(minX, rx);
+                            maxX = Math.max(maxX, rx);
+                            minY = Math.min(minY, ry);
+                            maxY = Math.max(maxY, ry);
+                        });
+                    } else if (obj.points && obj.points.length > 0) {
+                        hasObjects = true;
+                        obj.points.forEach(p => {
+                            minX = Math.min(minX, p.x);
+                            maxX = Math.max(maxX, p.x);
+                            minY = Math.min(minY, p.y);
+                            maxY = Math.max(maxY, p.y);
+                        });
+                    }
+                });
+            }
+
+            // Fallback: If no elements exist on this page, capture the current screen size
+            if (!hasObjects) {
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = canvas.width / state.dpr;
+                tempCanvas.height = canvas.height / state.dpr;
+
+                tempCtx.fillStyle = state.bgColor;
+                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+                const originalZoom = state.zoom;
+                const originalOffsetX = state.offsetX;
+                const originalOffsetY = state.offsetY;
+
+                state.zoom = 1;
+                state.offsetX = 0;
+                state.offsetY = 0;
+
+                tempCtx.save();
+                if (page && page.paths) {
+                    page.paths.forEach(obj => drawObject(tempCtx, obj));
+                }
+                tempCtx.restore();
+
+                state.zoom = originalZoom;
+                state.offsetX = originalOffsetX;
+                state.offsetY = originalOffsetY;
+
+                const link = document.createElement('a');
+                link.download = `pro-board-snapshot-page-${state.activePageIndex + 1}.png`;
+                link.href = tempCanvas.toDataURL("image/png");
+                link.click();
+                return;
+            }
+
+            // Step 2: Establish comfortable margins around drawing boundaries and create a dynamically-sized offscreen canvas
+            const padding = 50;
+            const canvasW = Math.ceil(maxX - minX + 2 * padding);
+            const canvasH = Math.ceil(maxY - minY + 2 * padding);
+
             const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvasW;
+            tempCanvas.height = canvasH;
             const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
 
-            // Paint canvas back plate
+            // Render background plate color matching current board theme
             tempCtx.fillStyle = state.bgColor;
-            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            tempCtx.fillRect(0, 0, canvasW, canvasH);
 
-            // Re-render drawings layers
-            tempCtx.drawImage(canvas, 0, 0);
+            // Step 3: Shift space transformations to align the bounding box strictly to positive canvas coordinates
+            tempCtx.save();
+            tempCtx.translate(-minX + padding, -minY + padding);
 
-            // Trigger safe container download
+            // Temporarily standardise Zoom to 1.0 so font scaling behaves beautifully without screen-scaling artifacts
+            const originalZoom = state.zoom;
+            state.zoom = 1;
+
+            page.paths.forEach(obj => {
+                drawObject(tempCtx, obj);
+            });
+
+            state.zoom = originalZoom;
+            tempCtx.restore();
+
+            // Step 4: Expose offscreen context coordinates to immediate file download trigger
             const link = document.createElement('a');
             link.download = `pro-board-snapshot-page-${state.activePageIndex + 1}.png`;
             link.href = tempCanvas.toDataURL("image/png");
@@ -1553,11 +1821,39 @@
         document.getElementById('undo-btn').onclick = undo;
         document.getElementById('redo-btn').onclick = redo;
         document.getElementById('save-page-btn').onclick = exportPage;
+        
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        if (fullscreenBtn) {
+            fullscreenBtn.onclick = () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.warn("Could not enable fullscreen mode: ", err.message);
+                        showStatusMessage("Fullscreen Disabled on Browser", "red");
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            };
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            const icon = document.getElementById('fullscreen-icon');
+            if (icon && fullscreenBtn) {
+                if (document.fullscreenElement) {
+                    icon.className = "fa-solid fa-compress";
+                    fullscreenBtn.title = "Exit Fullscreen";
+                } else {
+                    icon.className = "fa-solid fa-expand";
+                    fullscreenBtn.title = "Toggle Fullscreen";
+                }
+            }
+        });
+
         document.getElementById('clear-page-btn').onclick = confirmClear;
 
         document.getElementById('stroke-size').oninput = (e) => updateBrushSize(e.target.value);
-        document.getElementById('size-dec').onclick = () => adjustSize(-2);
-        document.getElementById('size-inc').onclick = () => adjustSize(2);
+        document.getElementById('size-dec').onclick = () => adjustSize(-1);
+        document.getElementById('size-inc').onclick = () => adjustSize(1);
 
         document.getElementById('eraser-size').oninput = (e) => {
             state.size = parseInt(e.target.value);
@@ -1568,10 +1864,39 @@
 
         document.getElementById('mode-smooth').onclick = () => setEraserMode('smooth');
         document.getElementById('mode-stroke').onclick = () => setEraserMode('stroke');
+        const encCircleBtn = document.getElementById('mode-encircle');
+        if (encCircleBtn) {
+            encCircleBtn.onclick = () => setEraserMode('encircle');
+        }
 
         document.getElementById('bg-none').onclick = () => setPattern('none');
         document.getElementById('bg-dots').onclick = () => setPattern('dots');
         document.getElementById('bg-squares').onclick = () => setPattern('squares');
+
+        const penNormalBtn = document.getElementById('pen-mode-normal');
+        const penHighlighterBtn = document.getElementById('pen-mode-highlighter');
+        const penLaserBtn = document.getElementById('pen-mode-laser');
+        
+        if (penNormalBtn && penHighlighterBtn && penLaserBtn) {
+            penNormalBtn.onclick = () => {
+                state.penMode = 'normal';
+                penNormalBtn.classList.add('active-mode');
+                penHighlighterBtn.classList.remove('active-mode');
+                penLaserBtn.classList.remove('active-mode');
+            };
+            penHighlighterBtn.onclick = () => {
+                state.penMode = 'highlighter';
+                penHighlighterBtn.classList.add('active-mode');
+                penNormalBtn.classList.remove('active-mode');
+                penLaserBtn.classList.remove('active-mode');
+            };
+            penLaserBtn.onclick = () => {
+                state.penMode = 'laser';
+                penLaserBtn.classList.add('active-mode');
+                penNormalBtn.classList.remove('active-mode');
+                penHighlighterBtn.classList.remove('active-mode');
+            };
+        }
 
         document.getElementById('btn-crop-mode').onclick = toggleCropMode;
         document.getElementById('btn-delete-selected').onclick = deleteSelected;
